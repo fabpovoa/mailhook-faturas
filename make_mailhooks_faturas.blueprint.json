@@ -1,0 +1,1366 @@
+{
+    "name": "Mailhooks com arquivos de faturas",
+    "flow": [
+        {
+            "id": 1,
+            "module": "gateway:CustomMailHook",
+            "version": 1,
+            "parameters": {
+                "hook": 2411822,
+                "maxResults": 1
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 450
+                },
+                "restore": {
+                    "parameters": {
+                        "hook": {
+                            "data": {
+                                "editable": "false"
+                            },
+                            "label": "My gateway-mailhook webhook"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "hook",
+                        "type": "hook:gateway-mailhook",
+                        "label": "Mailhook",
+                        "required": true
+                    },
+                    {
+                        "name": "maxResults",
+                        "type": "number",
+                        "label": "Maximum number of results"
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "module": "util:SetVariables",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "scope": "roundtrip",
+                "variables": [
+                    {
+                        "name": "Sender",
+                        "value": "{{1.from.address}}"
+                    },
+                    {
+                        "name": "Subject",
+                        "value": "{{1.subject}}"
+                    },
+                    {
+                        "name": "Temp folder ID",
+                        "value": "1tE6onoC5f_AzmwrhUMZWYjxIRy1ZKAAC"
+                    },
+                    {
+                        "name": "BB_ou_BTG",
+                        "value": "{{if(contains(1.subject; \"ALTUS\"); \"BB\"; if(contains(1.subject; \"BTG\"); \"BTG\"; null))}}"
+                    },
+                    {
+                        "name": "Scenario account",
+                        "value": "mailhookcartoesbbbtg@smartmoney.ventures"
+                    },
+                    {
+                        "name": "Telegram_user_fabio",
+                        "value": "8942515016"
+                    },
+                    {
+                        "name": "Msg_sucesso",
+                        "value": "Nova fatura recebida. Folder criado e anexos enviados"
+                    },
+                    {
+                        "name": "Msg_email_subject_errado",
+                        "value": "Mailhook cartões - assunto não contém BTG ou Altus"
+                    },
+                    {
+                        "name": "Link automação MacMini ",
+                        "value": "https://similarly-laborer-swan.ngrok-free.dev/webhook/make?token=15d4512b881a2dfee2aa4ff3e2fb8171"
+                    }
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 450
+                },
+                "restore": {
+                    "expect": {
+                        "scope": {
+                            "label": "One cycle"
+                        },
+                        "variables": {
+                            "items": [
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null
+                            ]
+                        }
+                    }
+                },
+                "expect": [
+                    {
+                        "name": "variables",
+                        "spec": [
+                            {
+                                "name": "name",
+                                "type": "text",
+                                "label": "Variable name",
+                                "required": true
+                            },
+                            {
+                                "name": "value",
+                                "type": "any",
+                                "label": "Variable value"
+                            }
+                        ],
+                        "type": "array",
+                        "label": "Variables"
+                    },
+                    {
+                        "name": "scope",
+                        "type": "select",
+                        "label": "Variable lifetime",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "roundtrip",
+                                "execution"
+                            ]
+                        }
+                    }
+                ],
+                "interface": [
+                    {
+                        "name": "Sender",
+                        "type": "any",
+                        "label": "Sender"
+                    },
+                    {
+                        "name": "Subject",
+                        "type": "any",
+                        "label": "Subject"
+                    },
+                    {
+                        "name": "Temp folder ID",
+                        "type": "any",
+                        "label": "Temp folder ID"
+                    },
+                    {
+                        "name": "BB_ou_BTG",
+                        "type": "any",
+                        "label": "BB_ou_BTG"
+                    },
+                    {
+                        "name": "Scenario account",
+                        "type": "any",
+                        "label": "Scenario account"
+                    },
+                    {
+                        "name": "Telegram_user_fabio",
+                        "type": "any",
+                        "label": "Telegram_user_fabio"
+                    },
+                    {
+                        "name": "Msg_sucesso",
+                        "type": "any",
+                        "label": "Msg_sucesso"
+                    },
+                    {
+                        "name": "Msg_email_subject_errado",
+                        "type": "any",
+                        "label": "Msg_email_subject_errado"
+                    },
+                    {
+                        "name": "Link automação MacMini ",
+                        "type": "any",
+                        "label": "Link automação MacMini "
+                    }
+                ]
+            }
+        },
+        {
+            "id": 3,
+            "module": "google-drive:createAFolder",
+            "version": 4,
+            "parameters": {
+                "__IMTCONN__": 9253406
+            },
+            "mapper": {
+                "name": "tmp_{{timestamp}}",
+                "shared": false,
+                "folderId": "{{2.`Temp folder ID`}}",
+                "destination": "drive"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 450
+                },
+                "restore": {
+                    "expect": {
+                        "folderId": {
+                            "mode": "edit",
+                            "path": []
+                        },
+                        "destination": {
+                            "label": "My Drive"
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "google-drive"
+                            },
+                            "label": "reports@smrtmny.vc (fabio@smartmoney.ventures)"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:google-restricted,google-drive",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "destination",
+                        "type": "select",
+                        "label": "New Drive Location",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "drive",
+                                "share",
+                                "team"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "folderId",
+                        "type": "folder",
+                        "label": "New Folder Location",
+                        "required": true
+                    },
+                    {
+                        "name": "name",
+                        "type": "text",
+                        "label": "New Folder's Name"
+                    },
+                    {
+                        "name": "shared",
+                        "type": "boolean",
+                        "label": "Share Folder",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 10,
+            "module": "builtin:BasicRouter",
+            "version": 1,
+            "filter": null,
+            "mapper": null,
+            "metadata": {
+                "designer": {
+                    "x": 900,
+                    "y": 450
+                }
+            },
+            "routes": [
+                {
+                    "flow": [
+                        {
+                            "id": 8,
+                            "module": "builtin:BasicRouter",
+                            "version": 1,
+                            "filter": {
+                                "name": "BB ou BTG",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{2.BB_ou_BTG}}",
+                                            "b": "{{null}}",
+                                            "o": "text:notequal"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": null,
+                            "metadata": {
+                                "designer": {
+                                    "x": 1200,
+                                    "y": 300
+                                }
+                            },
+                            "routes": [
+                                {
+                                    "flow": [
+                                        {
+                                            "id": 6,
+                                            "module": "builtin:BasicFeeder",
+                                            "version": 1,
+                                            "parameters": {},
+                                            "mapper": {
+                                                "array": "{{1.attachments}}"
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 1500,
+                                                    "y": 0
+                                                },
+                                                "restore": {
+                                                    "expect": {
+                                                        "array": {
+                                                            "mode": "edit"
+                                                        }
+                                                    }
+                                                },
+                                                "expect": [
+                                                    {
+                                                        "mode": "edit",
+                                                        "name": "array",
+                                                        "spec": [],
+                                                        "type": "array",
+                                                        "label": "Array"
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "id": 7,
+                                            "module": "google-drive:uploadAFile",
+                                            "version": 4,
+                                            "parameters": {
+                                                "__IMTCONN__": 9253406
+                                            },
+                                            "mapper": {
+                                                "data": "{{6.data}}",
+                                                "title": "{{6.fileName}}",
+                                                "select": "map",
+                                                "convert": false,
+                                                "filename": "{{6.fileName}}",
+                                                "folderId": "{{3.id}}"
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 1800,
+                                                    "y": 0
+                                                },
+                                                "restore": {
+                                                    "expect": {
+                                                        "select": {
+                                                            "label": "Enter manually"
+                                                        }
+                                                    },
+                                                    "parameters": {
+                                                        "__IMTCONN__": {
+                                                            "data": {
+                                                                "scoped": "true",
+                                                                "connection": "google-drive"
+                                                            },
+                                                            "label": "reports@smrtmny.vc (fabio@smartmoney.ventures)"
+                                                        }
+                                                    }
+                                                },
+                                                "parameters": [
+                                                    {
+                                                        "name": "__IMTCONN__",
+                                                        "type": "account:google-restricted,google-drive",
+                                                        "label": "Connection",
+                                                        "required": true
+                                                    }
+                                                ],
+                                                "expect": [
+                                                    {
+                                                        "name": "select",
+                                                        "type": "select",
+                                                        "label": "Enter a Folder ID",
+                                                        "required": true,
+                                                        "validate": {
+                                                            "enum": [
+                                                                "map",
+                                                                "value"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "title",
+                                                        "type": "text",
+                                                        "label": "New File Name"
+                                                    },
+                                                    {
+                                                        "name": "filename",
+                                                        "type": "text",
+                                                        "label": "File Name",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "data",
+                                                        "type": "buffer",
+                                                        "label": "Data",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "convert",
+                                                        "type": "boolean",
+                                                        "label": "Convert a File",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "folderId",
+                                                        "type": "text",
+                                                        "label": "Folder ID",
+                                                        "required": true
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "flow": [
+                                        {
+                                            "id": 9,
+                                            "module": "telegram:SendReplyMessage",
+                                            "version": 1,
+                                            "parameters": {
+                                                "__IMTCONN__": 9253760
+                                            },
+                                            "mapper": {
+                                                "text": "{{2.Msg_sucesso}}. Cartão: {{2.BB_ou_BTG}}. Chamando automação no Mac Mini.",
+                                                "chatId": "{{2.Telegram_user_fabio}}",
+                                                "parseMode": "",
+                                                "replyMarkup": "",
+                                                "messageThreadId": "",
+                                                "replyToMessageId": "",
+                                                "replyMarkupAssembleType": "reply_markup_enter"
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 1500,
+                                                    "y": 450
+                                                },
+                                                "restore": {
+                                                    "expect": {
+                                                        "parseMode": {
+                                                            "label": "Empty"
+                                                        },
+                                                        "disableNotification": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "replyMarkupAssembleType": {
+                                                            "label": "Enter the Reply Markup"
+                                                        }
+                                                    },
+                                                    "parameters": {
+                                                        "__IMTCONN__": {
+                                                            "data": {
+                                                                "scoped": "true",
+                                                                "connection": "telegram"
+                                                            },
+                                                            "label": "My Telegram Bot connection"
+                                                        }
+                                                    }
+                                                },
+                                                "parameters": [
+                                                    {
+                                                        "name": "__IMTCONN__",
+                                                        "type": "account:telegram",
+                                                        "label": "Connection",
+                                                        "required": true
+                                                    }
+                                                ],
+                                                "expect": [
+                                                    {
+                                                        "name": "chatId",
+                                                        "type": "text",
+                                                        "label": "Chat ID",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "text",
+                                                        "type": "text",
+                                                        "label": "Text",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "messageThreadId",
+                                                        "type": "number",
+                                                        "label": "Message Thread ID"
+                                                    },
+                                                    {
+                                                        "name": "parseMode",
+                                                        "type": "select",
+                                                        "label": "Parse Mode",
+                                                        "validate": {
+                                                            "enum": [
+                                                                "Markdown",
+                                                                "HTML"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "disableNotification",
+                                                        "type": "boolean",
+                                                        "label": "Disable Notifications"
+                                                    },
+                                                    {
+                                                        "name": "disableWebPagePreview",
+                                                        "type": "boolean",
+                                                        "label": "Disable Link Previews"
+                                                    },
+                                                    {
+                                                        "name": "replyToMessageId",
+                                                        "type": "number",
+                                                        "label": "Original Message ID"
+                                                    },
+                                                    {
+                                                        "name": "replyMarkupAssembleType",
+                                                        "type": "select",
+                                                        "label": "Enter/Assemble the Reply Markup Field",
+                                                        "validate": {
+                                                            "enum": [
+                                                                "reply_markup_enter",
+                                                                "reply_markup_assemble"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "replyMarkup",
+                                                        "type": "text",
+                                                        "label": "Reply Markup"
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "id": 13,
+                                            "module": "http:MakeRequest",
+                                            "version": 4,
+                                            "parameters": {
+                                                "tlsType": "",
+                                                "authenticationType": "noAuth"
+                                            },
+                                            "mapper": {
+                                                "url": "{{2.`Link automação MacMini `}}",
+                                                "method": "post",
+                                                "contentType": "json",
+                                                "inputMethod": "jsonString",
+                                                "shareCookies": false,
+                                                "parseResponse": true,
+                                                "allowRedirects": true,
+                                                "stopOnHttpError": true,
+                                                "jsonStringBodyContent": "{\n  \"folder_id\": \"{{3.id}}\",\n  \"card_type\": \"{{2.BB_ou_BTG}}\"\n}",
+                                                "requestCompressedContent": true
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 1800,
+                                                    "y": 450
+                                                },
+                                                "restore": {
+                                                    "expect": {
+                                                        "method": {
+                                                            "mode": "chose",
+                                                            "label": "POST"
+                                                        },
+                                                        "headers": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "contentType": {
+                                                            "label": "application/jsonEnter data in the JSON format, as a string or using a data structure."
+                                                        },
+                                                        "inputMethod": {
+                                                            "label": "JSON stringEnter the JSON body as a raw text string. If values contain JSON reserved characters, you must escape them manually."
+                                                        },
+                                                        "shareCookies": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "parseResponse": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "allowRedirects": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "paginationType": {
+                                                            "label": "Empty"
+                                                        },
+                                                        "queryParameters": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "stopOnHttpError": {
+                                                            "mode": "chose"
+                                                        },
+                                                        "requestCompressedContent": {
+                                                            "mode": "chose"
+                                                        }
+                                                    },
+                                                    "parameters": {
+                                                        "tlsType": {
+                                                            "label": "Empty"
+                                                        },
+                                                        "authenticationType": {
+                                                            "label": "No authenticationUse when no credentials are required for the request."
+                                                        }
+                                                    }
+                                                },
+                                                "parameters": [
+                                                    {
+                                                        "name": "authenticationType",
+                                                        "type": "select",
+                                                        "label": "Authentication type",
+                                                        "required": true,
+                                                        "validate": {
+                                                            "enum": [
+                                                                "noAuth",
+                                                                "apiKey",
+                                                                "basicAuth",
+                                                                "oAuth"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "tlsType",
+                                                        "type": "select",
+                                                        "label": "Transport layer security (TLS)",
+                                                        "validate": {
+                                                            "enum": [
+                                                                "mTls",
+                                                                "tls"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "proxyKeychain",
+                                                        "type": "keychain:proxy",
+                                                        "label": "Proxy"
+                                                    }
+                                                ],
+                                                "expect": [
+                                                    {
+                                                        "name": "url",
+                                                        "type": "url",
+                                                        "label": "URL",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "method",
+                                                        "type": "select",
+                                                        "label": "Method",
+                                                        "required": true,
+                                                        "validate": {
+                                                            "enum": [
+                                                                "get",
+                                                                "head",
+                                                                "post",
+                                                                "put",
+                                                                "patch",
+                                                                "delete",
+                                                                "options"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "headers",
+                                                        "spec": {
+                                                            "name": "value",
+                                                            "spec": [
+                                                                {
+                                                                    "name": "name",
+                                                                    "type": "text",
+                                                                    "label": "Name",
+                                                                    "required": true,
+                                                                    "validate": {
+                                                                        "pattern": "^[-!#$%&'*+.^_`|~0-9A-Za-z]+$"
+                                                                    }
+                                                                },
+                                                                {
+                                                                    "name": "value",
+                                                                    "type": "text",
+                                                                    "label": "Value"
+                                                                }
+                                                            ],
+                                                            "type": "collection",
+                                                            "label": "Header"
+                                                        },
+                                                        "type": "array",
+                                                        "label": "Headers"
+                                                    },
+                                                    {
+                                                        "name": "queryParameters",
+                                                        "spec": {
+                                                            "name": "value",
+                                                            "spec": [
+                                                                {
+                                                                    "name": "name",
+                                                                    "type": "text",
+                                                                    "label": "Name",
+                                                                    "required": true
+                                                                },
+                                                                {
+                                                                    "name": "value",
+                                                                    "type": "text",
+                                                                    "label": "Value"
+                                                                }
+                                                            ],
+                                                            "type": "collection",
+                                                            "label": "Parameter"
+                                                        },
+                                                        "type": "array",
+                                                        "label": "Query parameters"
+                                                    },
+                                                    {
+                                                        "name": "contentType",
+                                                        "type": "select",
+                                                        "label": "Body content type",
+                                                        "validate": {
+                                                            "enum": [
+                                                                "json",
+                                                                "multipart",
+                                                                "urlEncoded",
+                                                                "custom"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "parseResponse",
+                                                        "type": "boolean",
+                                                        "label": "Parse response",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "stopOnHttpError",
+                                                        "type": "boolean",
+                                                        "label": "Return error if HTTP request fails",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "timeout",
+                                                        "type": "uinteger",
+                                                        "label": "Timeout",
+                                                        "validate": {
+                                                            "max": 300,
+                                                            "min": 1
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "allowRedirects",
+                                                        "type": "boolean",
+                                                        "label": "Allow redirects",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "shareCookies",
+                                                        "type": "boolean",
+                                                        "label": "Share cookies with other HTTP modules",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "requestCompressedContent",
+                                                        "type": "boolean",
+                                                        "label": "Request compressed content",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "inputMethod",
+                                                        "type": "select",
+                                                        "label": "Body input method",
+                                                        "required": true,
+                                                        "validate": {
+                                                            "enum": [
+                                                                "dataStructure",
+                                                                "jsonString"
+                                                            ]
+                                                        }
+                                                    },
+                                                    {
+                                                        "name": "jsonStringBodyContent",
+                                                        "type": "text",
+                                                        "label": "Body content",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "name": "paginationType",
+                                                        "type": "select",
+                                                        "label": "Pagination type",
+                                                        "validate": {
+                                                            "enum": [
+                                                                "offsetBased",
+                                                                "pageBased",
+                                                                "urlBased",
+                                                                "tokenBased"
+                                                            ]
+                                                        }
+                                                    }
+                                                ],
+                                                "interface": [
+                                                    {
+                                                        "name": "data",
+                                                        "type": "any",
+                                                        "label": "Data"
+                                                    },
+                                                    {
+                                                        "name": "statusCode",
+                                                        "type": "number",
+                                                        "label": "Status Code"
+                                                    },
+                                                    {
+                                                        "name": "headers",
+                                                        "spec": [
+                                                            {
+                                                                "name": "content-length",
+                                                                "type": "text",
+                                                                "label": "Content-Length"
+                                                            },
+                                                            {
+                                                                "name": "content-encoding",
+                                                                "type": "text",
+                                                                "label": "Content-Encoding"
+                                                            },
+                                                            {
+                                                                "name": "content-type",
+                                                                "type": "text",
+                                                                "label": "Content-Type"
+                                                            },
+                                                            {
+                                                                "name": "server",
+                                                                "type": "text",
+                                                                "label": "Server"
+                                                            },
+                                                            {
+                                                                "name": "cache-control",
+                                                                "type": "text",
+                                                                "label": "Cache-Control"
+                                                            },
+                                                            {
+                                                                "name": "set-cookie",
+                                                                "spec": {
+                                                                    "type": "text"
+                                                                },
+                                                                "type": "array",
+                                                                "label": "Set-Cookie"
+                                                            }
+                                                        ],
+                                                        "type": "collection",
+                                                        "label": "Headers"
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "id": 14,
+                                            "module": "builtin:BasicRouter",
+                                            "version": 1,
+                                            "mapper": null,
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 2100,
+                                                    "y": 450
+                                                }
+                                            },
+                                            "routes": [
+                                                {
+                                                    "flow": [
+                                                        {
+                                                            "id": 15,
+                                                            "module": "telegram:SendReplyMessage",
+                                                            "version": 1,
+                                                            "parameters": {
+                                                                "__IMTCONN__": 9253760
+                                                            },
+                                                            "filter": {
+                                                                "name": "Tudo certo",
+                                                                "conditions": [
+                                                                    [
+                                                                        {
+                                                                            "a": "{{13.statusCode}}",
+                                                                            "b": "200",
+                                                                            "o": "text:equal"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                            },
+                                                            "mapper": {
+                                                                "text": "Automação para processar fatura chamada do Make no MacMini e retornou com sucesso. Analise arquivos de fatura e cartões papai.",
+                                                                "chatId": "{{2.Telegram_user_fabio}}",
+                                                                "parseMode": "",
+                                                                "replyMarkup": "",
+                                                                "messageThreadId": "",
+                                                                "replyToMessageId": "",
+                                                                "replyMarkupAssembleType": "reply_markup_enter"
+                                                            },
+                                                            "metadata": {
+                                                                "designer": {
+                                                                    "x": 2400,
+                                                                    "y": 300
+                                                                },
+                                                                "restore": {
+                                                                    "expect": {
+                                                                        "parseMode": {
+                                                                            "label": "Empty"
+                                                                        },
+                                                                        "disableNotification": {
+                                                                            "mode": "chose"
+                                                                        },
+                                                                        "replyMarkupAssembleType": {
+                                                                            "label": "Enter the Reply Markup"
+                                                                        }
+                                                                    },
+                                                                    "parameters": {
+                                                                        "__IMTCONN__": {
+                                                                            "data": {
+                                                                                "scoped": "true",
+                                                                                "connection": "telegram"
+                                                                            },
+                                                                            "label": "My Telegram Bot connection"
+                                                                        }
+                                                                    }
+                                                                },
+                                                                "parameters": [
+                                                                    {
+                                                                        "name": "__IMTCONN__",
+                                                                        "type": "account:telegram",
+                                                                        "label": "Connection",
+                                                                        "required": true
+                                                                    }
+                                                                ],
+                                                                "expect": [
+                                                                    {
+                                                                        "name": "chatId",
+                                                                        "type": "text",
+                                                                        "label": "Chat ID",
+                                                                        "required": true
+                                                                    },
+                                                                    {
+                                                                        "name": "text",
+                                                                        "type": "text",
+                                                                        "label": "Text",
+                                                                        "required": true
+                                                                    },
+                                                                    {
+                                                                        "name": "messageThreadId",
+                                                                        "type": "number",
+                                                                        "label": "Message Thread ID"
+                                                                    },
+                                                                    {
+                                                                        "name": "parseMode",
+                                                                        "type": "select",
+                                                                        "label": "Parse Mode",
+                                                                        "validate": {
+                                                                            "enum": [
+                                                                                "Markdown",
+                                                                                "HTML"
+                                                                            ]
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        "name": "disableNotification",
+                                                                        "type": "boolean",
+                                                                        "label": "Disable Notifications"
+                                                                    },
+                                                                    {
+                                                                        "name": "disableWebPagePreview",
+                                                                        "type": "boolean",
+                                                                        "label": "Disable Link Previews"
+                                                                    },
+                                                                    {
+                                                                        "name": "replyToMessageId",
+                                                                        "type": "number",
+                                                                        "label": "Original Message ID"
+                                                                    },
+                                                                    {
+                                                                        "name": "replyMarkupAssembleType",
+                                                                        "type": "select",
+                                                                        "label": "Enter/Assemble the Reply Markup Field",
+                                                                        "validate": {
+                                                                            "enum": [
+                                                                                "reply_markup_enter",
+                                                                                "reply_markup_assemble"
+                                                                            ]
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        "name": "replyMarkup",
+                                                                        "type": "text",
+                                                                        "label": "Reply Markup"
+                                                                    }
+                                                                ]
+                                                            }
+                                                        }
+                                                    ]
+                                                },
+                                                {
+                                                    "flow": [
+                                                        {
+                                                            "id": 20,
+                                                            "module": "telegram:SendReplyMessage",
+                                                            "version": 1,
+                                                            "parameters": {
+                                                                "__IMTCONN__": 9253760
+                                                            },
+                                                            "filter": {
+                                                                "name": "Rolou algum erro",
+                                                                "conditions": [
+                                                                    [
+                                                                        {
+                                                                            "a": "{{13.statusCode}}",
+                                                                            "b": "200",
+                                                                            "o": "text:notequal"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                            },
+                                                            "mapper": {
+                                                                "text": "Rolou algum erro. Vai checar: {{var.scenario.url}} Login: {{2.`Scenario account`}}",
+                                                                "chatId": "{{2.Telegram_user_fabio}}",
+                                                                "parseMode": "",
+                                                                "replyMarkup": "",
+                                                                "messageThreadId": "",
+                                                                "replyToMessageId": "",
+                                                                "replyMarkupAssembleType": "reply_markup_enter"
+                                                            },
+                                                            "metadata": {
+                                                                "designer": {
+                                                                    "x": 2400,
+                                                                    "y": 600
+                                                                },
+                                                                "restore": {
+                                                                    "expect": {
+                                                                        "parseMode": {
+                                                                            "label": "Empty"
+                                                                        },
+                                                                        "disableNotification": {
+                                                                            "mode": "chose"
+                                                                        },
+                                                                        "replyMarkupAssembleType": {
+                                                                            "label": "Enter the Reply Markup"
+                                                                        }
+                                                                    },
+                                                                    "parameters": {
+                                                                        "__IMTCONN__": {
+                                                                            "data": {
+                                                                                "scoped": "true",
+                                                                                "connection": "telegram"
+                                                                            },
+                                                                            "label": "My Telegram Bot connection"
+                                                                        }
+                                                                    }
+                                                                },
+                                                                "parameters": [
+                                                                    {
+                                                                        "name": "__IMTCONN__",
+                                                                        "type": "account:telegram",
+                                                                        "label": "Connection",
+                                                                        "required": true
+                                                                    }
+                                                                ],
+                                                                "expect": [
+                                                                    {
+                                                                        "name": "chatId",
+                                                                        "type": "text",
+                                                                        "label": "Chat ID",
+                                                                        "required": true
+                                                                    },
+                                                                    {
+                                                                        "name": "text",
+                                                                        "type": "text",
+                                                                        "label": "Text",
+                                                                        "required": true
+                                                                    },
+                                                                    {
+                                                                        "name": "messageThreadId",
+                                                                        "type": "number",
+                                                                        "label": "Message Thread ID"
+                                                                    },
+                                                                    {
+                                                                        "name": "parseMode",
+                                                                        "type": "select",
+                                                                        "label": "Parse Mode",
+                                                                        "validate": {
+                                                                            "enum": [
+                                                                                "Markdown",
+                                                                                "HTML"
+                                                                            ]
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        "name": "disableNotification",
+                                                                        "type": "boolean",
+                                                                        "label": "Disable Notifications"
+                                                                    },
+                                                                    {
+                                                                        "name": "disableWebPagePreview",
+                                                                        "type": "boolean",
+                                                                        "label": "Disable Link Previews"
+                                                                    },
+                                                                    {
+                                                                        "name": "replyToMessageId",
+                                                                        "type": "number",
+                                                                        "label": "Original Message ID"
+                                                                    },
+                                                                    {
+                                                                        "name": "replyMarkupAssembleType",
+                                                                        "type": "select",
+                                                                        "label": "Enter/Assemble the Reply Markup Field",
+                                                                        "validate": {
+                                                                            "enum": [
+                                                                                "reply_markup_enter",
+                                                                                "reply_markup_assemble"
+                                                                            ]
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        "name": "replyMarkup",
+                                                                        "type": "text",
+                                                                        "label": "Reply Markup"
+                                                                    }
+                                                                ]
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 11,
+                            "module": "google-email:sendAnEmail",
+                            "version": 4,
+                            "parameters": {
+                                "__IMTCONN__": 9253659
+                            },
+                            "filter": {
+                                "name": "Não tem BTG ou BB no assunto",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{2.BB_ou_BTG}}",
+                                            "b": "{{null}}",
+                                            "o": "text:equal"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "to": [
+                                    "fabio@smartmoney.ventures"
+                                ],
+                                "content": "Account: {{2.`Scenario account`}}<br>\nScenario: {{var.scenario.url}}",
+                                "subject": "{{2.Msg_email_subject_errado}}",
+                                "bodyType": "rawHtml"
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1200,
+                                    "y": 900
+                                },
+                                "restore": {
+                                    "expect": {
+                                        "cc": {
+                                            "mode": "chose"
+                                        },
+                                        "to": {
+                                            "mode": "chose",
+                                            "items": [
+                                                null
+                                            ]
+                                        },
+                                        "bcc": {
+                                            "mode": "chose"
+                                        },
+                                        "from": {
+                                            "mode": "chose"
+                                        },
+                                        "bodyType": {
+                                            "label": "Raw HTML"
+                                        },
+                                        "attachments": {
+                                            "mode": "chose"
+                                        },
+                                        "emailHeaders": {
+                                            "mode": "chose"
+                                        }
+                                    },
+                                    "parameters": {
+                                        "__IMTCONN__": {
+                                            "data": {
+                                                "scoped": "true",
+                                                "connection": "google-email"
+                                            },
+                                            "label": "Gmail (fabio@smartmoney.ventures)"
+                                        }
+                                    }
+                                },
+                                "parameters": [
+                                    {
+                                        "name": "__IMTCONN__",
+                                        "type": "account:google-email",
+                                        "label": "Connection",
+                                        "required": true
+                                    }
+                                ],
+                                "expect": [
+                                    {
+                                        "name": "to",
+                                        "spec": {
+                                            "name": "value",
+                                            "type": "email",
+                                            "label": "Recipient email address",
+                                            "required": true,
+                                            "validate": true
+                                        },
+                                        "type": "array",
+                                        "label": "To",
+                                        "required": true
+                                    },
+                                    {
+                                        "name": "subject",
+                                        "type": "text",
+                                        "label": "Subject"
+                                    },
+                                    {
+                                        "name": "bodyType",
+                                        "type": "select",
+                                        "label": "Body type",
+                                        "required": true,
+                                        "validate": {
+                                            "enum": [
+                                                "rawHtml",
+                                                "collection"
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "name": "attachments",
+                                        "spec": {
+                                            "name": "value",
+                                            "spec": [
+                                                {
+                                                    "name": "filename",
+                                                    "type": "filename",
+                                                    "label": "File name",
+                                                    "required": true,
+                                                    "semantic": "file:name"
+                                                },
+                                                {
+                                                    "name": "data",
+                                                    "type": "buffer",
+                                                    "label": "Data",
+                                                    "required": true,
+                                                    "semantic": "file:data"
+                                                }
+                                            ],
+                                            "type": "collection",
+                                            "label": "Attachment"
+                                        },
+                                        "type": "array",
+                                        "label": "Attachments"
+                                    },
+                                    {
+                                        "name": "from",
+                                        "type": "select",
+                                        "label": "From"
+                                    },
+                                    {
+                                        "name": "cc",
+                                        "spec": {
+                                            "name": "value",
+                                            "type": "email",
+                                            "label": "Recipient email address"
+                                        },
+                                        "type": "array",
+                                        "label": "CC recipients"
+                                    },
+                                    {
+                                        "name": "bcc",
+                                        "spec": {
+                                            "name": "value",
+                                            "type": "email",
+                                            "label": "Recipient email address"
+                                        },
+                                        "type": "array",
+                                        "label": "BCC recipients"
+                                    },
+                                    {
+                                        "name": "emailHeaders",
+                                        "spec": {
+                                            "name": "value",
+                                            "spec": [
+                                                {
+                                                    "name": "key",
+                                                    "type": "text",
+                                                    "label": "Key",
+                                                    "required": true
+                                                },
+                                                {
+                                                    "name": "value",
+                                                    "type": "text",
+                                                    "label": "Value"
+                                                }
+                                            ],
+                                            "type": "collection",
+                                            "label": "Email header"
+                                        },
+                                        "type": "array",
+                                        "label": "Additional email headers"
+                                    },
+                                    {
+                                        "name": "content",
+                                        "type": "text",
+                                        "label": "Content"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "us2.make.com",
+        "notes": []
+    }
+}
