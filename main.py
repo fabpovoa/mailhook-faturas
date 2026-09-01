@@ -29,6 +29,7 @@ from pdf_extractor import extract_transactions, extract_header_text, get_fatura_
 from xlsx_writer import build_xlsx
 from faturas_updater import group_by_owner, update_faturas_luiz, update_btg_pais
 from btg_excel_extractor import extract_btg_excel
+from claro_handler import process_claro_attachment
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ WEBHOOK_SECRET     = os.getenv("WEBHOOK_SECRET", "")
 
 # Filtro preciso: só e-mails da faturaourocard com PDF anexo
 GMAIL_QUERY = "from:digital@faturaourocard.com.br has:attachment filename:pdf is:unread"
+
+# Fatura Claro (conta Pais/SMV1) — pode chegar direto ou encaminhada (fabio@povoa.com),
+# por isso o filtro de assunto além do remetente direto (ver claro_handler.is_fatura_claro).
+CLARO_GMAIL_QUERY = '(from:faturadigital@minhaclaro.com.br OR subject:"Fatura Digital Claro" OR subject:"Fatura Claro") has:attachment filename:pdf is:unread'
 
 
 @asynccontextmanager
@@ -81,43 +86,48 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
 
 
 async def process_new_emails(email_address: str):
-    """Busca APENAS e-mails de digital@faturaourocard.com.br não lidos com PDF."""
+    """Busca e-mails não lidos com PDF: fatura BB Altus e fatura Claro (Pais)."""
     try:
         service = get_gmail_service()
-
-        results = service.users().messages().list(
-            userId=email_address,
-            q=GMAIL_QUERY,
-            maxResults=10,
-        ).execute()
-
-        messages = results.get("messages", [])
-        if not messages:
-            log.info("Nenhuma fatura BB nova.")
-            return
-
-        for msg_ref in messages:
-            msg = get_message(service, email_address, msg_ref["id"])
-            headers = {h["name"].lower(): h["value"]
-                       for h in msg.get("payload", {}).get("headers", [])}
-            email_date_str = headers.get("date", "")
-
-            attachments = extract_pdf_attachments(service, email_address, msg)
-            if not attachments:
-                log.info(f"Mensagem {msg_ref['id']} sem PDF.")
-                continue
-
-            all_ok = True
-            for att in attachments:
-                if not await process_attachment(att, email_date_str):
-                    all_ok = False
-
-            if all_ok:
-                mark_message_read(service, email_address, msg_ref["id"])
-                log.info(f"Mensagem {msg_ref['id']} marcada como lida.")
-
+        await _search_and_process(service, email_address, GMAIL_QUERY, process_attachment, "fatura BB")
+        await _search_and_process(service, email_address, CLARO_GMAIL_QUERY, process_claro_attachment, "fatura Claro")
     except Exception as e:
         log.exception(f"Erro ao processar e-mails: {e}")
+
+
+async def _search_and_process(service, email_address: str, query: str, handler, label: str):
+    """Busca mensagens pela query, roda `handler(att, email_date_str)` em cada anexo PDF
+    e marca como lida só se todos os anexos da mensagem forem processados com sucesso."""
+    results = service.users().messages().list(
+        userId=email_address,
+        q=query,
+        maxResults=10,
+    ).execute()
+
+    messages = results.get("messages", [])
+    if not messages:
+        log.info(f"Nenhuma {label} nova.")
+        return
+
+    for msg_ref in messages:
+        msg = get_message(service, email_address, msg_ref["id"])
+        headers = {h["name"].lower(): h["value"]
+                   for h in msg.get("payload", {}).get("headers", [])}
+        email_date_str = headers.get("date", "")
+
+        attachments = extract_pdf_attachments(service, email_address, msg)
+        if not attachments:
+            log.info(f"Mensagem {msg_ref['id']} sem PDF.")
+            continue
+
+        all_ok = True
+        for att in attachments:
+            if not await handler(att, email_date_str):
+                all_ok = False
+
+        if all_ok:
+            mark_message_read(service, email_address, msg_ref["id"])
+            log.info(f"Mensagem {msg_ref['id']} ({label}) marcada como lida.")
 
 
 async def process_attachment(att: dict, email_date_str: str) -> bool:

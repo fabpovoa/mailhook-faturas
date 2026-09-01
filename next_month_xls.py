@@ -2,8 +2,11 @@
 Cria o xls dos pais do mês seguinte a partir do atual.
 
 Lógica da aba "Gastos cartões Fábio":
-  - (recorrente) na Descrição  → copia, coluna G = "pending" (fundo amarelo)
-  - X/Y na Descrição, X < Y   → copia, incrementa parcela para (X+1)/Y
+  - (recorrente) na Descrição  → copia, colunas de Link ("Link", "Link 2") = "pending"
+                                  (fundo amarelo) — exceto quem já tiver o link real
+                                  passado via `known_links` (ver create_next_month_xls)
+  - X/Y na Descrição, X < Y   → copia, incrementa parcela para (X+1)/Y, mantém
+                                  os links originais intactos (nunca pending)
   - X/Y na Descrição, X = Y   → última parcela, não copia
   - Outros (one-off)           → não copia
 
@@ -84,15 +87,16 @@ def _process_fabio_tab(ws, next_date: datetime):
         log.warning("Cabeçalho não encontrado em '%s'", FABIO_TAB)
         return
 
-    # 2. Descobre qual coluna é Descrição e qual é Link (G)
+    # 2. Descobre qual coluna é Descrição e quais são as colunas de Link (F "Link", G "Link 2")
     header_cells = list(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=False))[0]
-    col_desc = col_link = None
+    col_desc = None
+    link_cols: list[int] = []
     for cell in header_cells:
-        v = str(cell.value or "").lower()
+        v = str(cell.value or "").lower().strip()
         if "descri" in v:
             col_desc = cell.column
-        if v == "link" and col_link is None:
-            col_link = cell.column
+        if v in ("link", "link 2"):
+            link_cols.append(cell.column)
 
     if not col_desc:
         log.warning("Coluna Descrição não encontrada")
@@ -121,17 +125,20 @@ def _process_fabio_tab(ws, next_date: datetime):
     def write_row(row_cells, override_desc=None, pending_link=False):
         """
         Copia uma linha com fonte azul.
-        pending_link=True  → coluna Link = "pending" com fundo amarelo (recorrentes)
-        pending_link=False → coluna Link mantém valor original, sem fundo amarelo (parcelados)
-        Ignora células completamente vazias sem valor (evita recriar colunas vazias).
+        pending_link=True  → todas as colunas de Link (F "Link", G "Link 2") viram
+                              "pending" com fundo amarelo (recorrentes) — mesmo que a
+                              célula original estivesse vazia (o mês novo ainda não
+                              tem nenhum comprovante).
+        pending_link=False → colunas de Link mantêm o valor original, sem fundo amarelo (parcelados).
+        Ignora demais células completamente vazias sem valor (evita recriar colunas vazias).
         """
         for cell in row_cells:
-            if cell.value is None:
-                continue  # não recria células vazias
+            if cell.value is None and not (pending_link and cell.column in link_cols):
+                continue  # não recria células vazias (exceto Link em linhas recorrentes)
             value = override_desc if (override_desc and cell.column == col_desc) else cell.value
             new_cell = ws.cell(row=insert_row, column=cell.column, value=value)
             new_cell.font = blue_font
-            if cell.column == col_link and pending_link:
+            if cell.column in link_cols and pending_link:
                 new_cell.value = "pending"
                 new_cell.fill = YELLOW_FILL
 
@@ -182,11 +189,62 @@ def _clear_card_tab(wb, tab_name: str):
     log.info("Aba '%s' limpa (só cabeçalho).", tab_name)
 
 
-def create_next_month_xls(xlsx_bytes: bytes, ref_date: datetime) -> tuple[bytes, str]:
+def _apply_known_links(ws, known_links: dict[str, str]):
+    """
+    Substitui, nas linhas recorrentes recém-marcadas como "pending", a PRIMEIRA
+    coluna de link por um valor real já conhecido (ex.: link do PDF da Claro já
+    processado neste mês) — usado por handlers que rodam antes do rollover
+    (ex.: claro_handler.py). A segunda coluna de link (se houver) permanece
+    "pending": só a primeira é preenchida.
+
+    known_links: {substring a procurar na Descrição (case-insensitive): link}
+    """
+    if not known_links:
+        return
+    header_row = None
+    for row in ws.iter_rows():
+        vals = [str(c.value or "").lower() for c in row]
+        if "data" in vals and any("descri" in v for v in vals):
+            header_row = row[0].row
+            break
+    if header_row is None:
+        return
+
+    header_cells = list(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=False))[0]
+    col_desc = None
+    link_cols: list[int] = []
+    for cell in header_cells:
+        v = str(cell.value or "").lower().strip()
+        if "descri" in v:
+            col_desc = cell.column
+        if v in ("link", "link 2"):
+            link_cols.append(cell.column)
+    if not col_desc or not link_cols:
+        return
+    first_link_col = min(link_cols)
+
+    for row in ws.iter_rows(min_row=header_row + 1):
+        desc_cell = next((c for c in row if c.column == col_desc), None)
+        if not desc_cell or not desc_cell.value:
+            continue
+        desc_low = str(desc_cell.value).lower()
+        for keyword, link in known_links.items():
+            if keyword.lower() in desc_low:
+                link_cell = next((c for c in row if c.column == first_link_col), None)
+                if link_cell is not None:
+                    link_cell.value = link
+                    link_cell.fill = PatternFill(fill_type=None)
+                break
+
+
+def create_next_month_xls(
+    xlsx_bytes: bytes, ref_date: datetime, known_links: Optional[dict[str, str]] = None
+) -> tuple[bytes, str]:
     """
     Recebe o xls atual dos pais e retorna (novo_xls_bytes, novo_filename).
 
     ref_date: data de referência do mês atual (ex: datetime(2026, 6, 1))
+    known_links: opcional, ver _apply_known_links — ex. {"Claro Fibra": webViewLink}
     """
     next_date = _next_month_date(ref_date)
     filename  = _build_next_filename(ref_date)
@@ -204,7 +262,10 @@ def create_next_month_xls(xlsx_bytes: bytes, ref_date: datetime) -> tuple[bytes,
 
     # 2. Processa aba Gastos cartões Fábio
     if FABIO_TAB in wb.sheetnames:
-        _process_fabio_tab(wb[FABIO_TAB], next_date)
+        ws_fabio = wb[FABIO_TAB]
+        _process_fabio_tab(ws_fabio, next_date)
+        if known_links:
+            _apply_known_links(ws_fabio, known_links)
 
     # 3. Limpa abas de cartões
     for tab in CARD_TABS:
