@@ -412,6 +412,28 @@ def proxima_parcela(payee):
     return (f"{n + 1}/{tot} {m[3]}", True) if n < tot else (None, False)
 
 
+GATE = "Avisar o Leandro? Digite OK aqui depois de validar a planilha"
+
+
+def _garantir_gate(ws):
+    """Linha logo abaixo do 'Saldo a pagar' onde Fábio digita OK pra liberar o aviso ao Leandro. Devolve (linha, coluna_valor)."""
+    v = ws.get_all_values(); hl, col = _colunas_pagtos(v)
+    sal = next((i for i, r in enumerate(v, 1) if len(r) > 1 and "Saldo a pagar" in r[1]), None)
+    if sal is None:
+        raise RuntimeError("planilha de pagtos: linha 'Saldo a pagar' não encontrada")
+    g = next((i for i, r in enumerate(v, 1) if len(r) > 1 and "Avisar o Leandro" in r[1]), None)
+    if g is None:
+        g = sal + 1
+        ws.update(values=[[GATE]], range_name=f"B{g}", value_input_option="RAW")
+        ws.update(values=[[""]], range_name=gspread_a1(g, col["Valor"]), value_input_option="RAW")
+    return g, col["Valor"], sal
+
+
+def gspread_a1(r, cc):
+    import gspread
+    return gspread.utils.rowcol_to_a1(r, cc)
+
+
 def garantir_pagtos(c, gc=None):
     """doc_id da planilha 'Pagtos BB Altus Visa' do mês; se não existe, copia a do mês anterior (Drive API) e zera pro novo mês."""
     import gspread
@@ -465,6 +487,7 @@ def garantir_pagtos(c, gc=None):
     if tot:
         upd += [{"range": A(tot, col["Valor"]), "values": [[0]]}, {"range": A(tot, col["Forma pagamento"]), "values": [[""]]}]
     ws.batch_update(upd, value_input_option="RAW")
+    _garantir_gate(ws)
     log("planilha de pagtos do mês criada:", novo)
     return novo
 
@@ -485,8 +508,8 @@ def etapa_pagtos(c):
     a, b = l_pais[0], l_tot[0]
     A = lambda r, cc: gspread.utils.rowcol_to_a1(r, cc)
     if c.dry:
-        log(f"[dry] pagtos: linha {a} R$ {brl(c.d['luiz'] + c.d['fátima'])} (col {cv}) + link (col {cl}); linha {b} total R$ {brl(c.d['total'])} + pdf (col {cf})"); return
-    ws.update(values=[[round(c.d["luiz"] + c.d["fátima"], 2)]], range_name=A(a, cv), value_input_option="RAW")
+        log(f"[dry] pagtos: linha {a} R$ {brl(c.d['saldo'])} (col {cv}) + link (col {cl}); linha {b} total R$ {brl(c.d['total'])} + pdf (col {cf})"); return
+    ws.update(values=[[round(c.d["saldo"], 2)]], range_name=A(a, cv), value_input_option="RAW")  # = Total!C13 do xlsx (Fábio corrigiu em 01/10: não é Luiz+Fátima)
     ws.update(values=[[xlsx_link]], range_name=A(a, cl), value_input_option="USER_ENTERED")
     ws.update(values=[[c.d["total"]]], range_name=A(b, cv), value_input_option="RAW")
     ws.update(values=[[pdf_link]], range_name=A(b, cf), value_input_option="USER_ENTERED")
@@ -499,11 +522,11 @@ def _template(nome):
     return (TEMPLATES / nome).read_text()
 
 
-def _preenche(s, c):
+def _preenche(s, c, extra=None):
     m_ref = MES[(c.mes - 2) % 12]
     venc = date.fromisoformat(c.d["venc_pagto"])
-    vals = {"MES_ENVIO": MES[c.mes - 1], "MES_REF": m_ref, "ANO2": str(c.ano)[2:], "VALOR_A_PAGAR": brl(c.d["saldo"]),
-            "DATA_PAGTO": f"{venc.day} {MES[venc.month - 1]}", "LINHA_DIGITAVEL_BOLETO": c.d["linha"]}
+    vals = {"MES_ENVIO": MES[c.mes - 1], "MES_REF": m_ref, "ANO2": str(c.ano)[2:], "VALOR_A_PAGAR": brl(c.d["saldo"]) if "saldo" in c.d else "",
+            "DATA_PAGTO": f"{venc.day} {MES[venc.month - 1]}", "LINHA_DIGITAVEL_BOLETO": c.d["linha"], **(extra or {})}
     for k, v in vals.items():
         s = s.replace("{" + k + "}", v)
     return s
@@ -558,6 +581,37 @@ def etapa_whatsapp(c):
         log("WhatsApp enviado:", r.status, json.load(r).get("key", {}).get("id"))
 
 
+def etapa_leandro(c):
+    """Aviso ao Leandro (grupo 'Faturas cartões Mirelle e Leandro'). Só sai depois que Fábio digita OK na linha-gate da planilha de pagtos
+    (o 'Saldo a pagar' depende de lançamentos manuais — em 01/10/26 o valor saiu errado e teve de ser corrigido por errata)."""
+    import gspread
+    doc = garantir_pagtos(c)
+    ws = gspread.authorize(creds()).open_by_key(doc).sheet1
+    g, cv, sal = _garantir_gate(ws) if not c.dry else (0, 0, 0)
+    if c.dry:
+        log("[dry] Leandro: aguardaria 'OK' na linha-gate da planilha de pagtos; depois leria o saldo e enviaria"); return
+    gate = ws.get(gspread_a1(g, cv), value_render_option="UNFORMATTED_VALUE")
+    ok = str(gate[0][0]).strip().upper() if gate and gate[0] else ""
+    if ok != "OK":
+        hoje = date.today().isoformat()
+        if c.d.get("leandro_notif") != hoje:
+            c.d["leandro_notif"] = hoje; c.save()
+            notify("Altus: valide a planilha de pagtos e digite OK na linha 'Avisar o Leandro' pra eu mandar o aviso.")
+        raise Pendente("aguardando OK do Fábio na planilha de pagtos")
+    val = ws.get(gspread_a1(sal, cv), value_render_option="UNFORMATTED_VALUE")[0][0]
+    if not isinstance(val, (int, float)) or val <= 0:
+        raise RuntimeError(f"saldo a pagar inválido/≤ 0 na planilha de pagtos: {val!r} — não avisei o Leandro")
+    t = _preenche(_template("Template - WhatsApp aviso de saldo ao Leandro (fatura BB).txt"), c, {"VALOR_SALDO": brl(round(val, 2))})
+    jid, msg = re.search(r"JID: (\d+@g\.us)", t)[1], _secao(t, "--- MENSAGEM")
+    _confere(msg)
+    env = dotenv_values(KPOOL / ".env.local")
+    req = urllib.request.Request(f"{env['EVOLUTION_URL']}/message/sendText/fabio", json.dumps({"number": jid, "text": msg}).encode(),
+                                 {"apikey": env["EVOLUTION_API_KEY"], "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        log("aviso ao Leandro enviado:", r.status, "R$", brl(val))
+    ws.update(values=[[f"Enviado {datetime.now():%d/%m %H:%M} (R$ {brl(val)})"]], range_name=gspread_a1(g, cv), value_input_option="RAW")  # não reenviar
+
+
 def etapa_proximo(c):
     """Deixa pronto o xlsx do mês seguinte (3 abas Altus limpas), pra o próximo ciclo não depender de ninguém."""
     ano, mes = (c.ano, c.mes + 1) if c.mes < 12 else (c.ano + 1, 1)
@@ -567,7 +621,7 @@ def etapa_proximo(c):
 
 
 ETAPAS = [("pdf", etapa_pdf), ("xlsx", etapa_xlsx), ("boletos", etapa_boletos), ("money", etapa_money),
-          ("pagtos", etapa_pagtos), ("email", etapa_email), ("whatsapp", etapa_whatsapp), ("proximo", etapa_proximo)]
+          ("pagtos", etapa_pagtos), ("email", etapa_email), ("whatsapp", etapa_whatsapp), ("leandro", etapa_leandro), ("proximo", etapa_proximo)]
 
 
 def main():
