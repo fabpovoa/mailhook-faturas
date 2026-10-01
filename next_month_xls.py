@@ -36,7 +36,7 @@ INPUT_FONT_COLOR = "342EFF"
 from openpyxl.styles import Font
 
 # Abas de cartões a limpar (mantém só o cabeçalho)
-CARD_TABS = ["BB Altus Visa Luiz", "BB Altus Visa Fátima", "BTG"]
+CARD_TABS = ["BB Altus Visa Luiz", "BB Altus Visa Fátima", "BB Altus Visa Mariana", "BTG"]
 
 # Nome da aba de gastos do Fábio
 FABIO_TAB = "Gastos cartões Fábio"
