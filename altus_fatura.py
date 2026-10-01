@@ -126,6 +126,79 @@ def limpa_amarelo(sh, ws, celulas):
                                                    "cell": {"userEnteredFormat": {}}, "fields": "userEnteredFormat.backgroundColor"}} for r, c in celulas]})
 
 
+
+# ---------------------------------------------------------------- pré-requisitos (criados pela própria automação)
+def _mes_anterior(ano, mes):
+    return (ano, mes - 1) if mes > 1 else (ano - 1, 12)
+
+
+def _xlsx_do_mes(ano, mes):
+    pasta = CARTOES / str(ano) / PASTAS[mes - 1] / "Pais"
+    return [p for p in pasta.glob("faturas_Cartões_Luiz_*.xlsx") if not p.name.startswith("~$")]
+
+
+def garantir_xlsx(ano, mes):
+    """xlsx dos pais do mês: cria a partir do mês anterior (gerador next_month_xls) se faltar; garante as 3 abas de cartão Altus."""
+    import openpyxl, next_month_xls
+    from copy import copy
+    achados = _xlsx_do_mes(ano, mes)
+    if len(achados) > 1:
+        raise RuntimeError(f"mais de um xlsx dos pais em {ano}-{mes:02d}: {[p.name for p in achados]}")
+    if not achados:
+        pa, pm = _mes_anterior(ano, mes)
+        fonte = _xlsx_do_mes(pa, pm)
+        if len(fonte) != 1:
+            raise RuntimeError(f"sem xlsx do mês anterior ({pa}-{pm:02d}) pra gerar o de {ano}-{mes:02d}")
+        dados, nome = next_month_xls.create_next_month_xls(fonte[0].read_bytes(), datetime(pa, pm, 1))
+        destino = CARTOES / str(ano) / PASTAS[mes - 1] / "Pais" / nome
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_bytes(dados)
+        log("xlsx do mês criado a partir do anterior:", destino.name)
+        achados = [destino]
+    path = achados[0]
+    wb = openpyxl.load_workbook(path)
+    mudou = False
+    molde = next((wb[a] for a, _ in ABAS.values() if a in wb.sheetnames), None)
+    if molde is None and any(a not in wb.sheetnames for a, _ in ABAS.values()):
+        pa, pm = ano, mes
+        for _ in range(12):  # procura molde em meses anteriores
+            pa, pm = _mes_anterior(pa, pm)
+            for f in _xlsx_do_mes(pa, pm):
+                w2 = openpyxl.load_workbook(f)
+                molde = next((w2[a] for a, _ in ABAS.values() if a in w2.sheetnames), None)
+                if molde is not None:
+                    break
+            if molde is not None:
+                break
+    for k, (aba, _) in ABAS.items():
+        if aba not in wb.sheetnames:
+            if molde is None:
+                raise RuntimeError(f"{path.name}: nenhuma aba Altus pra usar de molde (nem em meses anteriores)")
+            ws = wb.create_sheet(aba)  # cabeçalho (linhas 1-4), larguras e estilo copiados do molde — funciona entre arquivos
+            ws.sheet_view.showGridLines = molde.sheet_view.showGridLines
+            ws.sheet_properties.tabColor = molde.sheet_properties.tabColor
+            for kk, d in molde.column_dimensions.items():
+                ws.column_dimensions[kk].width = d.width
+            for r in range(1, 5):
+                if molde.row_dimensions[r].height:
+                    ws.row_dimensions[r].height = molde.row_dimensions[r].height
+                for cc in range(1, 9):
+                    o, d = molde.cell(r, cc), ws.cell(r, cc)
+                    d.value = o.value
+                    if o.has_style:
+                        d.font, d.fill, d.border, d.alignment, d.number_format = copy(o.font), copy(o.fill), copy(o.border), copy(o.alignment), o.number_format
+            ws["B2"], ws["C2"] = {"Luiz": (2, "- LUIZ C M POVOA"), "Mariana": (4, "- MARIANA R POVOA"), "Fátima": (3, "- MARIA F R POVOA")}[k]
+            ws["D2"] = "Subtotal" if k == "Luiz" else None
+            ws["E2"] = "=SUM(F5:F300)"
+            log(f"aba '{aba}' criada em {path.name}"); mudou = True
+        w = wb[aba]
+        if w.freeze_panes != "A5":
+            w.freeze_panes = "A5"; mudou = True  # molde antigo trazia A54 (53 linhas fixas = sem rolagem)
+    if mudou:
+        wb.save(path)
+    return path
+
+
 # ---------------------------------------------------------------- contexto
 class Ctx:
     def __init__(self, ano, mes, dry):
@@ -220,7 +293,7 @@ def etapa_xlsx(c):
     from copy import copy
     from openpyxl.styles import PatternFill
     _ler_pdf(c, c.dest)
-    path = c.xlsx()
+    path = garantir_xlsx(c.ano, c.mes) if not c.dry else c.xlsx()
     wb = openpyxl.load_workbook(path)
     escreveu = False
     for k, (aba, chave) in ABAS.items():
@@ -262,16 +335,43 @@ def etapa_xlsx(c):
     log("xlsx ok; saldo (Total!C13) =", c.d["saldo"])
 
 
+
+def garantir_linha_boletos(sh, ws, rot, c):
+    """Linha '{mmm}./{aa} / BB Altus Visa' da planilha Boletos; se faltar, insere (fim do bloco do mês, ou fim da planilha) copiando formato da última."""
+    rows = ws.get_all_values()
+    lin = [i for i, r in enumerate(rows, 1) if len(r) > 3 and r[1].strip() == rot and r[3].strip() == "BB Altus Visa"]
+    if len(lin) > 1:
+        raise RuntimeError(f"linha '{rot} / BB Altus Visa' duplicada na planilha Boletos: {lin}")
+    if lin:
+        return lin[0]
+    ant = [i for i, r in enumerate(rows, 1) if len(r) > 3 and r[3].strip() == "BB Altus Visa"]
+    if not ant:
+        raise RuntimeError("Boletos: sem linha 'BB Altus Visa' anterior pra usar de molde")
+    src = ant[-1]; r0 = rows[src - 1] + [""] * 11
+    bloco = [i for i, r in enumerate(rows, 1) if len(r) > 1 and r[1].strip() == rot]
+    novo = (bloco[-1] + 1) if bloco else len(rows) + 1
+    linha = c.d.get("linha") or ""
+    vals = ["", rot + " ", int(c.d["venc_impresso"][-2:]), "BB Altus Visa", "pending", "pending", r0[6], "", f"Boleto da fatura {linha}" if linha else r0[8], "", "pending"]
+    if c.dry:
+        log(f"[dry] Boletos: inseriria linha {novo} ({rot}) copiando formato da linha {src}"); return novo
+    ws.insert_row(vals, novo, value_input_option="RAW")  # RAW: "jan./27" em USER_ENTERED vira data
+    src_real = src + 1 if novo <= src else src
+    # copyPaste falha com linhas filtradas (a planilha tem filtro compartilhado) → lê o formato da linha molde e aplica com updateCells
+    fm = sh.fetch_sheet_metadata({"includeGridData": True, "ranges": [f"'{ws.title}'!A{src_real}:K{src_real}"]})["sheets"][0]["data"][0]["rowData"][0]["values"]
+    cel = [{"userEnteredFormat": x["userEnteredFormat"]} if "userEnteredFormat" in x else {} for x in fm] + [{}] * (11 - len(fm))
+    sh.batch_update({"requests": [{"updateCells": {"range": {"sheetId": ws.id, "startRowIndex": novo - 1, "endRowIndex": novo, "startColumnIndex": 0, "endColumnIndex": 11},
+                                                   "rows": [{"values": cel[:11]}], "fields": "userEnteredFormat"}}]})
+    log(f"Boletos: linha {novo} ({rot}) criada")
+    return novo
+
+
 def etapa_boletos(c):
     import gspread
     pdf_link = drive_link(c.dest.name)
     gc = gspread.authorize(creds())
     sh = gc.open_by_key(BOLETOS_ID); ws = sh.worksheet(BOLETOS_TAB)
     rot = f"{MES[c.mes - 1].lower()}./{str(c.ano)[2:]}"
-    lin = [i for i, r in enumerate(ws.get_all_values(), 1) if len(r) > 3 and r[1].strip() == rot and r[3].strip() == "BB Altus Visa"]
-    if len(lin) != 1:
-        raise RuntimeError(f"linha '{rot} / BB Altus Visa' na planilha Boletos: achei {len(lin)}")
-    i = lin[0]
+    i = garantir_linha_boletos(sh, ws, rot, c)
     if c.dry:
         log(f"[dry] Boletos linha {i}: dia {date.fromisoformat(c.d['venc_pagto']).day}, R$ {brl(c.d['total'])}, link {pdf_link}"); return
     ws.update(values=[[date.fromisoformat(c.d["venc_pagto"]).day]], range_name=f"C{i}", value_input_option="USER_ENTERED")
@@ -292,20 +392,75 @@ def etapa_money(c):
     log("money:", r.stdout.strip()[-120:])
 
 
+def _gsheet_doc(p):
+    return json.loads(p.read_text())["doc_id"]
+
+
+def _colunas_pagtos(v):
+    hl = next((i for i, r in enumerate(v) if "Payee" in [x.strip() for x in r]), None)
+    if hl is None:
+        raise RuntimeError("planilha de pagtos: cabeçalho com 'Payee' não encontrado")
+    return hl, {x.strip(): j + 1 for j, x in enumerate(v[hl]) if x.strip()}  # colunas por nome (a planilha ganha colunas)
+
+
+def garantir_pagtos(c, gc=None):
+    """doc_id da planilha 'Pagtos BB Altus Visa' do mês; se não existe, copia a do mês anterior (Drive API) e zera pro novo mês."""
+    import gspread
+    from googleapiclient.discovery import build
+    if c.d.get("pagtos_doc"):
+        return c.d["pagtos_doc"]
+    achados = sorted(c.pasta_mes.rglob("*Pagtos BB Altus Visa.gsheet"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if achados:
+        c.d["pagtos_doc"] = _gsheet_doc(achados[0]); return c.d["pagtos_doc"]
+    pa, pm = _mes_anterior(c.ano, c.mes)
+    ant = sorted((CARTOES / str(pa) / PASTAS[pm - 1]).rglob("*Pagtos BB Altus Visa.gsheet"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not ant:
+        raise Pendente("sem planilha 'Pagtos BB Altus Visa' do mês anterior pra usar de molde")
+    venc = date.fromisoformat(c.d["venc_pagto"])
+    if c.dry:
+        log(f"[dry] copiaria '{ant[0].name}' → '{venc.day} {MES[c.mes - 1]}_Pagtos BB Altus Visa' na pasta do mês e zeraria"); raise Pendente("dry-run: planilha de pagtos seria criada")
+    drive = build("drive", "v3", credentials=creds())
+    pdf = drive.files().list(q=f"name = '{c.dest.name}' and trashed = false", fields="files(parents)").execute()["files"]
+    if not pdf:
+        raise Pendente("PDF ainda não sincronizou no Drive (preciso da pasta do mês)")
+    pasta_mes_id = drive.files().get(fileId=pdf[0]["parents"][0], fields="parents").execute()["parents"][0]
+    novo = drive.files().copy(fileId=_gsheet_doc(ant[0]), body={"name": f"{venc.day} {MES[c.mes - 1]}_Pagtos BB Altus Visa", "parents": [pasta_mes_id]}, fields="id").execute()["id"]
+    c.d["pagtos_doc"] = novo; c.save()  # grava já: se algo abaixo falhar, a próxima rodada não copia de novo
+    ws = (gc or __import__("gspread").authorize(creds())).open_by_key(novo).sheet1
+    v = ws.get_all_values(); hl, col = _colunas_pagtos(v)
+    ini = hl + 2
+    fim = next((i for i in range(ini - 1, len(v)) if not any(x.strip() for x in v[i])), len(v))  # 1ª linha vazia após o cabeçalho
+    for i in range(fim, ini - 1, -1):  # 'One shot' não se repete no mês seguinte
+        if len(v[i - 1]) >= col["Recorrência"] and v[i - 1][col["Recorrência"] - 1].strip().lower() == "one shot":
+            ws.delete_rows(i)
+    v = ws.get_all_values(); hl, col = _colunas_pagtos(v)
+    serial = (venc - date(1899, 12, 30)).days
+    A = __import__("gspread").utils.rowcol_to_a1
+    upd = []
+    for i in range(hl + 2, len(v) + 1):
+        r = v[i - 1]
+        if not any(x.strip() for x in r):
+            break
+        upd.append({"range": A(i, col["Data"]), "values": [[serial]]})
+        upd.append({"range": A(i, col["Link comprov"]), "values": [["Pending"]]})
+        if len(r) >= col["Payee"] and unicodedata.normalize("NFC", r[col["Payee"] - 1]).strip() == "Luiz e Fátima":
+            upd.append({"range": A(i, col["Valor"]), "values": [[0]]})
+    tot = next((i for i, r in enumerate(v, 1) if len(r) > 1 and "Total da fatura" in r[1]), None)
+    if tot:
+        upd += [{"range": A(tot, col["Valor"]), "values": [[0]]}, {"range": A(tot, col["Forma pagamento"]), "values": [[""]]}]
+    ws.batch_update(upd, value_input_option="RAW")
+    log("planilha de pagtos do mês criada:", novo)
+    return novo
+
+
 def etapa_pagtos(c):
     import gspread
-    achados = sorted(c.pasta_mes.rglob("*Pagtos BB Altus Visa.gsheet"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not achados:
-        raise Pendente("planilha 'Pagtos BB Altus Visa' do mês ainda não existe")
-    doc = json.loads(achados[0].read_text())["doc_id"]
+    doc = garantir_pagtos(c)
     pdf_link, xlsx_link = drive_link(c.dest.name), drive_link(c.xlsx().name)
     sh = gspread.authorize(creds()).open_by_key(doc); ws = sh.sheet1
     v = ws.get_all_values()
     nfc = lambda s: unicodedata.normalize("NFC", s).strip()
-    hl = next((i for i, r in enumerate(v) if "Payee" in [x.strip() for x in r]), None)
-    if hl is None:
-        raise RuntimeError("planilha de pagtos: cabeçalho com 'Payee' não encontrado")
-    col = {x.strip(): j + 1 for j, x in enumerate(v[hl]) if x.strip()}  # colunas por nome (a planilha ganha colunas)
+    _, col = _colunas_pagtos(v)
     cv, cp, cl, cf = col["Valor"], col["Payee"], col["Link comprov"], col["Forma pagamento"]
     l_pais = [i for i, r in enumerate(v, 1) if len(r) >= cp and nfc(r[cp - 1]) == "Luiz e Fátima"]
     l_tot = [i for i, r in enumerate(v, 1) if len(r) > 1 and "Total da fatura" in r[1]]
@@ -387,8 +542,16 @@ def etapa_whatsapp(c):
         log("WhatsApp enviado:", r.status, json.load(r).get("key", {}).get("id"))
 
 
+def etapa_proximo(c):
+    """Deixa pronto o xlsx do mês seguinte (3 abas Altus limpas), pra o próximo ciclo não depender de ninguém."""
+    ano, mes = (c.ano, c.mes + 1) if c.mes < 12 else (c.ano + 1, 1)
+    if c.dry:
+        log(f"[dry] garantiria xlsx de {ano}-{mes:02d}"); return
+    log("xlsx do próximo mês ok:", garantir_xlsx(ano, mes).name)
+
+
 ETAPAS = [("pdf", etapa_pdf), ("xlsx", etapa_xlsx), ("boletos", etapa_boletos), ("money", etapa_money),
-          ("pagtos", etapa_pagtos), ("email", etapa_email), ("whatsapp", etapa_whatsapp)]
+          ("pagtos", etapa_pagtos), ("email", etapa_email), ("whatsapp", etapa_whatsapp), ("proximo", etapa_proximo)]
 
 
 def main():
