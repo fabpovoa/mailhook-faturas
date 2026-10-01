@@ -403,6 +403,15 @@ def _colunas_pagtos(v):
     return hl, {x.strip(): j + 1 for j, x in enumerate(v[hl]) if x.strip()}  # colunas por nome (a planilha ganha colunas)
 
 
+def proxima_parcela(payee):
+    """'1/4 Estadias…' → ('2/4 Estadias…', True); '4/4 …' → (None, False) (acabou, some da planilha); sem 'n/m' → (payee, True)."""
+    m = re.match(r"^\s*(\d+)/(\d+)\s+(.*)$", payee)
+    if not m:
+        return payee, True
+    n, tot = int(m[1]), int(m[2])
+    return (f"{n + 1}/{tot} {m[3]}", True) if n < tot else (None, False)
+
+
 def garantir_pagtos(c, gc=None):
     """doc_id da planilha 'Pagtos BB Altus Visa' do mês; se não existe, copia a do mês anterior (Drive API) e zera pro novo mês."""
     import gspread
@@ -431,7 +440,10 @@ def garantir_pagtos(c, gc=None):
     ini = hl + 2
     fim = next((i for i in range(ini - 1, len(v)) if not any(x.strip() for x in v[i])), len(v))  # 1ª linha vazia após o cabeçalho
     for i in range(fim, ini - 1, -1):  # 'One shot' não se repete no mês seguinte
-        if len(v[i - 1]) >= col["Recorrência"] and v[i - 1][col["Recorrência"] - 1].strip().lower() == "one shot":
+        r = v[i - 1]
+        one_shot = len(r) >= col["Recorrência"] and r[col["Recorrência"] - 1].strip().lower() == "one shot"
+        acabou = len(r) >= col["Payee"] and not proxima_parcela(unicodedata.normalize("NFC", r[col["Payee"] - 1]).strip())[1]
+        if one_shot or acabou:  # 'One shot' não se repete; parcela n/n (ex.: 4/4 Bernardinos) some no mês seguinte
             ws.delete_rows(i)
     v = ws.get_all_values(); hl, col = _colunas_pagtos(v)
     serial = (venc - date(1899, 12, 30)).days
@@ -443,7 +455,11 @@ def garantir_pagtos(c, gc=None):
             break
         upd.append({"range": A(i, col["Data"]), "values": [[serial]]})
         upd.append({"range": A(i, col["Link comprov"]), "values": [["Pending"]]})
-        if len(r) >= col["Payee"] and unicodedata.normalize("NFC", r[col["Payee"] - 1]).strip() == "Luiz e Fátima":
+        pay = unicodedata.normalize("NFC", r[col["Payee"] - 1]).strip() if len(r) >= col["Payee"] else ""
+        novo_pay = proxima_parcela(pay)[0]
+        if novo_pay and novo_pay != pay:  # valor da parcela se mantém (1/4 do total); só avança o contador
+            upd.append({"range": A(i, col["Payee"]), "values": [[novo_pay]]})
+        if pay == "Luiz e Fátima":
             upd.append({"range": A(i, col["Valor"]), "values": [[0]]})
     tot = next((i for i, r in enumerate(v, 1) if len(r) > 1 and "Total da fatura" in r[1]), None)
     if tot:
